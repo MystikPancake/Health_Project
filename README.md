@@ -1,2 +1,2 @@
 # How to Run
-Create Health application
+Andrioid Version: 8.0(Oreo)
