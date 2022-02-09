@@ -1,2 +1,2 @@
-# Health_Project
+# How to Run
 Create Health application
