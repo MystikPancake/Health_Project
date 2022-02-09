@@ -38,6 +38,10 @@ flutter_lints
 2.12
 file:///Users/malikwilliams/dev/flutter/.pub-cache/hosted/pub.dartlang.org/flutter_lints-1.0.4/
 file:///Users/malikwilliams/dev/flutter/.pub-cache/hosted/pub.dartlang.org/flutter_lints-1.0.4/lib/
+intl
+2.12
+file:///Users/malikwilliams/dev/flutter/.pub-cache/hosted/pub.dartlang.org/intl-0.17.0/
+file:///Users/malikwilliams/dev/flutter/.pub-cache/hosted/pub.dartlang.org/intl-0.17.0/lib/
 lints
 2.12
 file:///Users/malikwilliams/dev/flutter/.pub-cache/hosted/pub.dartlang.org/lints-1.0.1/
@@ -66,6 +70,10 @@ stack_trace
 2.12
 file:///Users/malikwilliams/dev/flutter/.pub-cache/hosted/pub.dartlang.org/stack_trace-1.10.0/
 file:///Users/malikwilliams/dev/flutter/.pub-cache/hosted/pub.dartlang.org/stack_trace-1.10.0/lib/
+states_rebuilder
+2.12
+file:///Users/malikwilliams/dev/flutter/.pub-cache/hosted/pub.dartlang.org/states_rebuilder-5.2.0/
+file:///Users/malikwilliams/dev/flutter/.pub-cache/hosted/pub.dartlang.org/states_rebuilder-5.2.0/lib/
 stream_channel
 2.12
 file:///Users/malikwilliams/dev/flutter/.pub-cache/hosted/pub.dartlang.org/stream_channel-2.1.0/
@@ -98,6 +106,10 @@ flutter
 2.12
 file:///Users/malikwilliams/dev/flutter/packages/flutter/
 file:///Users/malikwilliams/dev/flutter/packages/flutter/lib/
+flutter_localizations
+2.12
+file:///Users/malikwilliams/dev/flutter/packages/flutter_localizations/
+file:///Users/malikwilliams/dev/flutter/packages/flutter_localizations/lib/
 flutter_test
 2.12
 file:///Users/malikwilliams/dev/flutter/packages/flutter_test/
