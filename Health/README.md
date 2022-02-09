@@ -1,4 +1,4 @@
-# health
+# Application Configuration
 
 Mental_Health Application
 
