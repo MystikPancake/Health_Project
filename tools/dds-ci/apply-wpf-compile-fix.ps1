@@ -3,8 +3,10 @@ $ErrorActionPreference = 'Stop'
 $project = Join-Path $PSScriptRoot '..\..\dds\src\Dokkaebi.DocumentStudio.Native\Dokkaebi.DocumentStudio.Native.csproj'
 $main = Join-Path $PSScriptRoot '..\..\dds\src\Dokkaebi.DocumentStudio.Native\MainWindow.xaml.cs'
 $controls = Join-Path $PSScriptRoot '..\..\dds\src\Dokkaebi.DocumentStudio.Native\Themes\Controls.xaml'
+$models = Join-Path $PSScriptRoot '..\..\dds\src\Dokkaebi.DocumentStudio.Native\Pdf\PdfModels.cs'
+$tests = Join-Path $PSScriptRoot '..\..\dds\src\Dokkaebi.DocumentStudio.Native.Tests\Program.cs'
 
-foreach ($required in @($project,$main,$controls)) {
+foreach ($required in @($project,$main,$controls,$models,$tests)) {
   if (-not (Test-Path $required)) { throw "DDS source not found: $required" }
 }
 
@@ -25,7 +27,19 @@ $controlsText = [IO.File]::ReadAllText($controls)
 $controlsText = $controlsText.Replace('<Setter Property="CharacterSpacing" Value="60"/>', '')
 [IO.File]::WriteAllText($controls, $controlsText)
 
+$modelText = [IO.File]::ReadAllText($models)
+$modelText = $modelText.Replace('public double Height => Math.Max(0, Bottom - Top);', 'public double Height => Math.Max(0, Top - Bottom);')
+[IO.File]::WriteAllText($models, $modelText)
+
+$testText = [IO.File]::ReadAllText($tests)
+$testText = $testText.Replace('var rect = PdfViewMath.PdfToView(new PdfRect(10, 80, 30, 100), 200, 2);', 'var rect = PdfViewMath.PdfToView(new PdfRect(10, 100, 30, 80), 200, 2);')
+$testText = $testText.Replace('Near(20, rect.Left, "rectLeft"); Near(200, rect.Top, "rectTop");', 'Near(20, rect.Left, "rectLeft"); Near(200, rect.Top, "rectTop"); Near(40, rect.Height, "rectHeight");')
+[IO.File]::WriteAllText($tests, $testText)
+
 $remaining = Select-String -Path $project,$main,$controls -Pattern 'UseWindowsForms|System\.Windows\.Forms|FolderBrowserDialog|new ExecutedRoutedEventArgs|CharacterSpacing'
 if ($remaining) { throw "Legacy compile dependency remained after WPF patch: $($remaining -join '; ')" }
 
-Write-Host 'Applied DDS WPF compile fixes.'
+if (-not ([IO.File]::ReadAllText($models).Contains('Math.Max(0, Top - Bottom)'))) { throw 'PDF rectangle height fix was not applied' }
+if (-not ([IO.File]::ReadAllText($tests).Contains('new PdfRect(10, 100, 30, 80)'))) { throw 'PDF rectangle test fix was not applied' }
+
+Write-Host 'Applied DDS WPF compile and PDF geometry fixes.'
