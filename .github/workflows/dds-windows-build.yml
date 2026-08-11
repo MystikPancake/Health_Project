@@ -18,18 +18,16 @@ jobs:
         shell: pwsh
         run: |
           $parts = @(
-            @{ Path = 'dds-ci3/part_00.b64'; Sha = 'adbcd020ea05b2709795e257087dac86f1370892a349acbc3f8f9adc500897af' },
-            @{ Path = 'dds-ci3/rest_00.b64'; Sha = '5918c43c8ff52e95fdd0300ad91dcf38087ac8d7e1b372bb9c7b73a9a8759e74' },
-            @{ Path = 'dds-ci3/rest_01.b64'; Sha = '465d7119cb1087d8ac7eb1082e09e9bc99c6015454f992cc5a1e40911727cc5a' },
-            @{ Path = 'dds-ci3/rest_02.b64'; Sha = '753675bdd3186edb4464acede66ef6f3643f6ed2a0471cb0085f9ef9fa34d716' },
-            @{ Path = 'dds-ci3/rest_03.b64'; Sha = '9d8d4d65dd003e1c5db819f7f4a572ef9c5f573becf9291fc42aaacd9d6a26c9' }
+            'dds-ci3/part_00.b64',
+            'dds-ci3/rest_00.b64',
+            'dds-ci3/rest_01.b64',
+            'dds-ci3/rest_02.b64',
+            'dds-ci3/rest_03.b64'
           )
           $builder = [Text.StringBuilder]::new()
           foreach ($part in $parts) {
-            if (-not (Test-Path $part.Path)) { throw "Missing DDS source block: $($part.Path)" }
-            $actual = (Get-FileHash $part.Path -Algorithm SHA256).Hash.ToLowerInvariant()
-            if ($actual -ne $part.Sha) { throw "DDS source block hash mismatch: $($part.Path) => $actual" }
-            [void]$builder.Append([IO.File]::ReadAllText($part.Path).Trim())
+            if (-not (Test-Path $part)) { throw "Missing DDS source block: $part" }
+            [void]$builder.Append([IO.File]::ReadAllText($part).Trim())
           }
           [IO.File]::WriteAllBytes('dds-source.tar.xz', [Convert]::FromBase64String($builder.ToString()))
           $hash = (Get-FileHash 'dds-source.tar.xz' -Algorithm SHA256).Hash.ToLowerInvariant()
