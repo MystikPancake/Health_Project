@@ -17,20 +17,24 @@ jobs:
       - name: Reconstruct and verify DDS source
         shell: pwsh
         run: |
-          $builder = [Text.StringBuilder]::new()
-          0..22 | ForEach-Object {
-            $part = 'dds-ci4/part_{0:D2}.b64' -f $_
-            if (-not (Test-Path $part)) { throw "Missing DDS source chunk: $part" }
-            $text = [IO.File]::ReadAllText($part)
-            $text = [Regex]::Replace($text, '\s', '')
-            [void]$builder.Append($text)
-          }
+          $out = [IO.File]::Open('dds-source.tar.xz', [IO.FileMode]::Create, [IO.FileAccess]::Write)
           try {
-            $bytes = [Convert]::FromBase64String($builder.ToString())
-          } catch {
-            throw "DDS source Base64 reconstruction failed: $($_.Exception.Message)"
+            0..22 | ForEach-Object {
+              $part = 'dds-ci4/part_{0:D2}.b64' -f $_
+              if (-not (Test-Path $part)) { throw "Missing DDS source chunk: $part" }
+              $text = [IO.File]::ReadAllText($part)
+              $text = [Regex]::Replace($text, '\s', '')
+              if ($text -notmatch '^[A-Za-z0-9+/]*={0,2}$') {
+                throw "DDS source chunk contains non-Base64 data: $part"
+              }
+              try { $decoded = [Convert]::FromBase64String($text) }
+              catch { throw "DDS source chunk decode failed: $part -- $($_.Exception.Message)" }
+              $out.Write($decoded, 0, $decoded.Length)
+              Write-Host "Decoded $part : $($decoded.Length) bytes"
+            }
+          } finally {
+            $out.Dispose()
           }
-          [IO.File]::WriteAllBytes('dds-source.tar.xz', $bytes)
           $hash = (Get-FileHash 'dds-source.tar.xz' -Algorithm SHA256).Hash.ToLowerInvariant()
           if ($hash -ne '793db2ace5f19d808498997ed354eb9776b985984528586f23f4e27b57b178ad') {
             throw "DDS source hash mismatch: $hash"
