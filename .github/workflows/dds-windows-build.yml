@@ -108,13 +108,7 @@ jobs:
 
       - name: Verify native publish
         shell: pwsh
-        working-directory: dds
-        run: |
-          if (-not (Test-Path 'artifacts/app/DokkaebiDocumentStudio.exe')) { throw 'DDS executable missing after publish' }
-          if (-not (Test-Path 'artifacts/app/pdfium.dll')) { throw 'pdfium.dll missing after publish' }
-          if (-not (Test-Path 'artifacts/worker/DokkaebiDocumentStudio.OfficeWorker.exe')) { throw 'Office worker missing after publish' }
-          & 'artifacts/app/DokkaebiDocumentStudio.exe' --release-smoke-test
-          if ($LASTEXITCODE -ne 0) { throw "DDS PDFium smoke test failed: $LASTEXITCODE" }
+        run: ./tools/dds-ci/verify-native-publish.ps1
 
       - name: Stage portable core
         shell: pwsh
