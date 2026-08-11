@@ -28,7 +28,8 @@ $controlsText = $controlsText.Replace('<Setter Property="CharacterSpacing" Value
 [IO.File]::WriteAllText($controls, $controlsText)
 
 $modelText = [IO.File]::ReadAllText($models)
-$modelText = $modelText.Replace('public double Height => Math.Max(0, Bottom - Top);', 'public double Height => Math.Max(0, Top - Bottom);')
+$modelText = $modelText.Replace('public double Height => Math.Max(0, Bottom - Top);', 'public double Height => Math.Abs(Top - Bottom);')
+$modelText = $modelText.Replace('public double Height => Math.Max(0, Top - Bottom);', 'public double Height => Math.Abs(Top - Bottom);')
 [IO.File]::WriteAllText($models, $modelText)
 
 $testText = [IO.File]::ReadAllText($tests)
@@ -39,7 +40,7 @@ $testText = $testText.Replace('Near(20, rect.Left, "rectLeft"); Near(200, rect.T
 $remaining = Select-String -Path $project,$main,$controls -Pattern 'UseWindowsForms|System\.Windows\.Forms|FolderBrowserDialog|new ExecutedRoutedEventArgs|CharacterSpacing'
 if ($remaining) { throw "Legacy compile dependency remained after WPF patch: $($remaining -join '; ')" }
 
-if (-not ([IO.File]::ReadAllText($models).Contains('Math.Max(0, Top - Bottom)'))) { throw 'PDF rectangle height fix was not applied' }
+if (-not ([IO.File]::ReadAllText($models).Contains('Math.Abs(Top - Bottom)'))) { throw 'PDF rectangle height fix was not applied' }
 if (-not ([IO.File]::ReadAllText($tests).Contains('new PdfRect(10, 100, 30, 80)'))) { throw 'PDF rectangle test fix was not applied' }
 
 Write-Host 'Applied DDS WPF compile and PDF geometry fixes.'
