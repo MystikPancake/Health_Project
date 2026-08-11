@@ -1,0 +1,139 @@
+name: DDS Windows Build
+
+on:
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  build-dds:
+    runs-on: windows-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout isolated branch
+        uses: actions/checkout@v4
+
+      - name: Reconstruct and verify DDS source
+        shell: pwsh
+        run: |
+          $out = [IO.File]::Open('dds-source.tar.xz', [IO.FileMode]::Create, [IO.FileAccess]::Write)
+          try {
+            0..22 | ForEach-Object {
+              $part = 'dds-ci4/part_{0:D2}.b64' -f $_
+              if (-not (Test-Path $part)) { throw "Missing DDS source chunk: $part" }
+              $text = [IO.File]::ReadAllText($part)
+              $text = [Regex]::Replace($text, '\s', '')
+              if ($text -notmatch '^[A-Za-z0-9+/]*={0,2}$') {
+                throw "DDS source chunk contains non-Base64 data: $part"
+              }
+              try { $decoded = [Convert]::FromBase64String($text) }
+              catch { throw "DDS source chunk decode failed: $part -- $($_.Exception.Message)" }
+              $out.Write($decoded, 0, $decoded.Length)
+              Write-Host "Decoded $part : $($decoded.Length) bytes"
+            }
+          } finally {
+            $out.Dispose()
+          }
+          $hash = (Get-FileHash 'dds-source.tar.xz' -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($hash -ne '793db2ace5f19d808498997ed354eb9776b985984528586f23f4e27b57b178ad') {
+            throw "DDS source hash mismatch: $hash"
+          }
+          New-Item -ItemType Directory -Force dds | Out-Null
+          tar.exe -xf dds-source.tar.xz -C dds
+          if ($LASTEXITCODE -ne 0) { throw "DDS source extraction failed: $LASTEXITCODE" }
+          if (-not (Test-Path 'dds/src/Dokkaebi.DocumentStudio.Native/Dokkaebi.DocumentStudio.Native.csproj')) {
+            throw 'DDS WPF project missing after extraction'
+          }
+          Write-Host "DDS source verified: $hash"
+
+      - name: Apply native WPF compile fixes
+        shell: pwsh
+        run: ./tools/dds-ci/apply-wpf-compile-fix.ps1
+
+      - name: Setup .NET 8
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.423'
+
+      - name: Pin .NET SDK for DDS
+        shell: pwsh
+        working-directory: dds
+        run: |
+          '{"sdk":{"version":"8.0.423","rollForward":"disable"}}' | Set-Content global.json -Encoding utf8
+          $sdk = dotnet --version
+          if ($sdk -ne '8.0.423') { throw "Unexpected .NET SDK selected: $sdk" }
+          Write-Host "DDS SDK: $sdk"
+
+      - name: Install PDFium x64
+        shell: pwsh
+        run: |
+          $url = 'https://github.com/bblanchon/pdfium-binaries/releases/download/chromium%2F7988/pdfium-win-x64.tgz'
+          Invoke-WebRequest -Uri $url -OutFile pdfium.tgz
+          New-Item -ItemType Directory -Force pdfium | Out-Null
+          tar.exe -xzf pdfium.tgz -C pdfium
+          if ($LASTEXITCODE -ne 0) { throw "PDFium extraction failed: $LASTEXITCODE" }
+          $dll = Get-ChildItem pdfium -Recurse -Filter pdfium.dll -File | Select-Object -First 1
+          if (-not $dll) { throw 'pdfium.dll missing from PDFium archive' }
+          New-Item -ItemType Directory -Force 'dds/src/Dokkaebi.DocumentStudio.Native/native' | Out-Null
+          Copy-Item $dll.FullName 'dds/src/Dokkaebi.DocumentStudio.Native/native/pdfium.dll' -Force
+
+      - name: Restore projects
+        shell: pwsh
+        working-directory: dds
+        run: |
+          dotnet restore src/Dokkaebi.DocumentStudio.Native/Dokkaebi.DocumentStudio.Native.csproj -r win-x64
+          dotnet restore src/Dokkaebi.DocumentStudio.Native.Tests/Dokkaebi.DocumentStudio.Native.Tests.csproj
+          dotnet restore src/Dokkaebi.DocumentStudio.OfficeWorker/Dokkaebi.DocumentStudio.OfficeWorker.csproj -r win-x64
+
+      - name: Build WPF app
+        shell: pwsh
+        working-directory: dds
+        run: dotnet build src/Dokkaebi.DocumentStudio.Native/Dokkaebi.DocumentStudio.Native.csproj -c Release -r win-x64 --no-restore
+
+      - name: Run native pure-code tests
+        shell: pwsh
+        working-directory: dds
+        run: dotnet run --project src/Dokkaebi.DocumentStudio.Native.Tests/Dokkaebi.DocumentStudio.Native.Tests.csproj -c Release
+
+      - name: Publish WPF app
+        shell: pwsh
+        working-directory: dds
+        run: dotnet publish src/Dokkaebi.DocumentStudio.Native/Dokkaebi.DocumentStudio.Native.csproj -c Release -r win-x64 --self-contained true --no-restore -o artifacts/app
+
+      - name: Publish Office worker
+        shell: pwsh
+        working-directory: dds
+        run: dotnet publish src/Dokkaebi.DocumentStudio.OfficeWorker/Dokkaebi.DocumentStudio.OfficeWorker.csproj -c Release -r win-x64 --self-contained true --no-restore -o artifacts/worker
+
+      - name: Verify native publish
+        shell: pwsh
+        run: ./tools/dds-ci/verify-native-publish.ps1
+
+      - name: Stage portable core
+        shell: pwsh
+        working-directory: dds
+        run: |
+          New-Item -ItemType Directory -Force artifacts/portable | Out-Null
+          Copy-Item artifacts/app/* artifacts/portable -Recurse -Force
+          Copy-Item artifacts/worker/DokkaebiDocumentStudio.OfficeWorker.exe artifacts/portable -Force
+          New-Item -ItemType Directory -Force artifacts/portable/settings | Out-Null
+          New-Item -ItemType Directory -Force artifacts/portable/themes | Out-Null
+          New-Item -ItemType Directory -Force artifacts/portable/engines | Out-Null
+          New-Item -ItemType Directory -Force artifacts/portable/Source/src | Out-Null
+          Copy-Item src/Dokkaebi.DocumentStudio.Native artifacts/portable/Source/src -Recurse -Force
+          Copy-Item src/Dokkaebi.DocumentStudio.Native.Tests artifacts/portable/Source/src -Recurse -Force
+          Copy-Item src/Dokkaebi.DocumentStudio.OfficeWorker artifacts/portable/Source/src -Recurse -Force
+          $root = (Resolve-Path artifacts/portable).Path
+          Get-ChildItem artifacts/portable -File -Recurse | ForEach-Object {
+            $rel = $_.FullName.Substring($root.Length + 1)
+            "{0}  {1}" -f (Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant(), $rel
+          } | Set-Content artifacts/portable/SHA256SUMS.txt
+          Compress-Archive -Path artifacts/portable/* -DestinationPath artifacts/DokkaebiDocumentStudio-portable-win-x64.zip -Force
+
+      - name: Upload portable artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: DokkaebiDocumentStudio-portable-win-x64
+          path: dds/artifacts/DokkaebiDocumentStudio-portable-win-x64.zip
+          if-no-files-found: error
