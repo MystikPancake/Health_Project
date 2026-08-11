@@ -14,9 +14,12 @@ $mainText = [IO.File]::ReadAllText($main)
 $mainText = $mainText.Replace('var d = new System.Windows.Forms.FolderBrowserDialog { Description = "Choose a folder for page images", UseDescriptionForTitle = true };', 'var d = new OpenFolderDialog { Title = "Choose a folder for page images" };')
 $mainText = $mainText.Replace('if (d.ShowDialog() != System.Windows.Forms.DialogResult.OK) return;', 'if (d.ShowDialog(this) != true) return;')
 $mainText = $mainText.Replace('PdfExportService.ExportAllPagesPng(_active.Document, d.SelectedPath)', 'PdfExportService.ExportAllPagesPng(_active.Document, d.FolderName)')
+$mainText = $mainText.Replace('private void OpenFromHome() => OpenCommandExecuted(this, new ExecutedRoutedEventArgs(ApplicationCommands.Open, null));', 'private void OpenFromHome() => ApplicationCommands.Open.Execute(null, this);')
+$mainText = $mainText.Replace('case "Open": OpenCommandExecuted(this, new ExecutedRoutedEventArgs(ApplicationCommands.Open, null)); break;', 'case "Open": ApplicationCommands.Open.Execute(null, this); break;')
+$mainText = $mainText.Replace('case "Print": PrintCommandExecuted(this, new ExecutedRoutedEventArgs(ApplicationCommands.Print, null)); break;', 'case "Print": ApplicationCommands.Print.Execute(null, this); break;')
 [IO.File]::WriteAllText($main, $mainText)
 
-$remaining = Select-String -Path $project,$main -Pattern 'UseWindowsForms|System\.Windows\.Forms|FolderBrowserDialog'
-if ($remaining) { throw "WinForms dependency remained after WPF patch: $($remaining -join '; ')" }
+$remaining = Select-String -Path $project,$main -Pattern 'UseWindowsForms|System\.Windows\.Forms|FolderBrowserDialog|new ExecutedRoutedEventArgs'
+if ($remaining) { throw "Legacy compile dependency remained after WPF patch: $($remaining -join '; ')" }
 
-Write-Host 'Applied DDS WPF-only compile fix.'
+Write-Host 'Applied DDS WPF compile fixes.'
