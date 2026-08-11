@@ -14,21 +14,34 @@ jobs:
       - name: Checkout isolated branch
         uses: actions/checkout@v4
 
-      - name: Verify and extract DDS source
+      - name: Reconstruct and verify DDS source
         shell: pwsh
         run: |
-          $archive = 'dds-ci-binary/source.tar.xz'
-          if (-not (Test-Path $archive)) { throw 'Binary DDS source archive missing' }
-          $hash = (Get-FileHash $archive -Algorithm SHA256).Hash.ToLowerInvariant()
+          $builder = [Text.StringBuilder]::new()
+          0..22 | ForEach-Object {
+            $part = 'dds-ci4/part_{0:D2}.b64' -f $_
+            if (-not (Test-Path $part)) { throw "Missing DDS source chunk: $part" }
+            $text = [IO.File]::ReadAllText($part)
+            $text = [Regex]::Replace($text, '\s', '')
+            [void]$builder.Append($text)
+          }
+          try {
+            $bytes = [Convert]::FromBase64String($builder.ToString())
+          } catch {
+            throw "DDS source Base64 reconstruction failed: $($_.Exception.Message)"
+          }
+          [IO.File]::WriteAllBytes('dds-source.tar.xz', $bytes)
+          $hash = (Get-FileHash 'dds-source.tar.xz' -Algorithm SHA256).Hash.ToLowerInvariant()
           if ($hash -ne '793db2ace5f19d808498997ed354eb9776b985984528586f23f4e27b57b178ad') {
             throw "DDS source hash mismatch: $hash"
           }
           New-Item -ItemType Directory -Force dds | Out-Null
-          tar.exe -xf $archive -C dds
+          tar.exe -xf dds-source.tar.xz -C dds
           if ($LASTEXITCODE -ne 0) { throw "DDS source extraction failed: $LASTEXITCODE" }
           if (-not (Test-Path 'dds/src/Dokkaebi.DocumentStudio.Native/Dokkaebi.DocumentStudio.Native.csproj')) {
             throw 'DDS WPF project missing after extraction'
           }
+          Write-Host "DDS source verified: $hash"
 
       - name: Setup .NET 8
         uses: actions/setup-dotnet@v4
