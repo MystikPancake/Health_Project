@@ -17,14 +17,31 @@ jobs:
       - name: Reconstruct DDS source
         shell: pwsh
         run: |
-          $b64 = Get-Content 'dds-ci2/source.tar.xz.b64' -Raw
-          [IO.File]::WriteAllBytes('dds-source.tar.xz', [Convert]::FromBase64String($b64))
+          $parts = @(
+            @{ Path = 'dds-ci3/part_00.b64'; Sha = 'adbcd020ea05b2709795e257087dac86f1370892a349acbc3f8f9adc500897af' },
+            @{ Path = 'dds-ci3/rest_00.b64'; Sha = '5918c43c8ff52e95fdd0300ad91dcf38087ac8d7e1b372bb9c7b73a9a8759e74' },
+            @{ Path = 'dds-ci3/rest_01.b64'; Sha = '465d7119cb1087d8ac7eb1082e09e9bc99c6015454f992cc5a1e40911727cc5a' },
+            @{ Path = 'dds-ci3/rest_02.b64'; Sha = '753675bdd3186edb4464acede66ef6f3643f6ed2a0471cb0085f9ef9fa34d716' },
+            @{ Path = 'dds-ci3/rest_03.b64'; Sha = '9d8d4d65dd003e1c5db819f7f4a572ef9c5f573becf9291fc42aaacd9d6a26c9' }
+          )
+          $builder = [Text.StringBuilder]::new()
+          foreach ($part in $parts) {
+            if (-not (Test-Path $part.Path)) { throw "Missing DDS source block: $($part.Path)" }
+            $actual = (Get-FileHash $part.Path -Algorithm SHA256).Hash.ToLowerInvariant()
+            if ($actual -ne $part.Sha) { throw "DDS source block hash mismatch: $($part.Path) => $actual" }
+            [void]$builder.Append([IO.File]::ReadAllText($part.Path).Trim())
+          }
+          [IO.File]::WriteAllBytes('dds-source.tar.xz', [Convert]::FromBase64String($builder.ToString()))
           $hash = (Get-FileHash 'dds-source.tar.xz' -Algorithm SHA256).Hash.ToLowerInvariant()
           if ($hash -ne '793db2ace5f19d808498997ed354eb9776b985984528586f23f4e27b57b178ad') {
             throw "DDS source hash mismatch: $hash"
           }
           New-Item -ItemType Directory -Force dds | Out-Null
-          tar.exe -xJf dds-source.tar.xz -C dds
+          tar.exe -xf dds-source.tar.xz -C dds
+          if ($LASTEXITCODE -ne 0) { throw "DDS source extraction failed: $LASTEXITCODE" }
+          if (-not (Test-Path 'dds/src/Dokkaebi.DocumentStudio.Native/Dokkaebi.DocumentStudio.Native.csproj')) {
+            throw 'DDS WPF project missing after extraction'
+          }
 
       - name: Setup .NET 8
         uses: actions/setup-dotnet@v4
@@ -38,6 +55,7 @@ jobs:
           Invoke-WebRequest -Uri $url -OutFile pdfium.tgz
           New-Item -ItemType Directory -Force pdfium | Out-Null
           tar.exe -xzf pdfium.tgz -C pdfium
+          if ($LASTEXITCODE -ne 0) { throw "PDFium extraction failed: $LASTEXITCODE" }
           $dll = Get-ChildItem pdfium -Recurse -Filter pdfium.dll -File | Select-Object -First 1
           if (-not $dll) { throw 'pdfium.dll missing from PDFium archive' }
           New-Item -ItemType Directory -Force 'dds/src/Dokkaebi.DocumentStudio.Native/native' | Out-Null
@@ -91,6 +109,10 @@ jobs:
           New-Item -ItemType Directory -Force artifacts/portable/settings | Out-Null
           New-Item -ItemType Directory -Force artifacts/portable/themes | Out-Null
           New-Item -ItemType Directory -Force artifacts/portable/engines | Out-Null
+          New-Item -ItemType Directory -Force artifacts/portable/Source/src | Out-Null
+          Copy-Item src/Dokkaebi.DocumentStudio.Native artifacts/portable/Source/src -Recurse -Force
+          Copy-Item src/Dokkaebi.DocumentStudio.Native.Tests artifacts/portable/Source/src -Recurse -Force
+          Copy-Item src/Dokkaebi.DocumentStudio.OfficeWorker artifacts/portable/Source/src -Recurse -Force
           $root = (Resolve-Path artifacts/portable).Path
           Get-ChildItem artifacts/portable -File -Recurse | ForEach-Object {
             $rel = $_.FullName.Substring($root.Length + 1)
