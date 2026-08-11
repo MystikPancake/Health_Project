@@ -24,28 +24,53 @@ jobs:
               if (-not (Test-Path $part)) { throw "Missing DDS source chunk: $part" }
               $text = [IO.File]::ReadAllText($part)
               $text = [Regex]::Replace($text, '\s', '')
-              if ($text -notmatch '^[A-Za-z0-9+/]*={0,2}$') {
-                throw "DDS source chunk contains non-Base64 data: $part"
-              }
+              if ($text -notmatch '^[A-Za-z0-9+/]*={0,2}$') { throw "DDS source chunk contains non-Base64 data: $part" }
               try { $decoded = [Convert]::FromBase64String($text) }
               catch { throw "DDS source chunk decode failed: $part -- $($_.Exception.Message)" }
               $out.Write($decoded, 0, $decoded.Length)
-              Write-Host "Decoded $part : $($decoded.Length) bytes"
             }
-          } finally {
-            $out.Dispose()
-          }
+          } finally { $out.Dispose() }
           $hash = (Get-FileHash 'dds-source.tar.xz' -Algorithm SHA256).Hash.ToLowerInvariant()
-          if ($hash -ne '793db2ace5f19d808498997ed354eb9776b985984528586f23f4e27b57b178ad') {
-            throw "DDS source hash mismatch: $hash"
-          }
+          if ($hash -ne '793db2ace5f19d808498997ed354eb9776b985984528586f23f4e27b57b178ad') { throw "DDS source hash mismatch: $hash" }
           New-Item -ItemType Directory -Force dds | Out-Null
           tar.exe -xf dds-source.tar.xz -C dds
           if ($LASTEXITCODE -ne 0) { throw "DDS source extraction failed: $LASTEXITCODE" }
-          if (-not (Test-Path 'dds/src/Dokkaebi.DocumentStudio.Native/Dokkaebi.DocumentStudio.Native.csproj')) {
-            throw 'DDS WPF project missing after extraction'
-          }
+          if (-not (Test-Path 'dds/src/Dokkaebi.DocumentStudio.Native/Dokkaebi.DocumentStudio.Native.csproj')) { throw 'DDS WPF project missing after extraction' }
           Write-Host "DDS source verified: $hash"
+
+      - name: Apply native WPF compile fixes
+        shell: pwsh
+        working-directory: dds
+        run: |
+          $project = 'src/Dokkaebi.DocumentStudio.Native/Dokkaebi.DocumentStudio.Native.csproj'
+          $projectText = [IO.File]::ReadAllText($project)
+          $projectText = $projectText.Replace("    <UseWindowsForms>true</UseWindowsForms>`n", '')
+          $projectText = $projectText.Replace("    <UseWindowsForms>true</UseWindowsForms>`r`n", '')
+          [IO.File]::WriteAllText($project, $projectText)
+
+          $main = 'src/Dokkaebi.DocumentStudio.Native/MainWindow.xaml.cs'
+          $mainText = [IO.File]::ReadAllText($main)
+          $old = @'
+            var d = new System.Windows.Forms.FolderBrowserDialog { Description = "Choose a folder for page images", UseDescriptionForTitle = true };
+            if (d.ShowDialog() != System.Windows.Forms.DialogResult.OK) return;
+            try { var files = PdfExportService.ExportAllPagesPng(_active.Document, d.SelectedPath); StatusText.Text = $"Exported {files.Count} PNG page(s)"; } catch (Exception ex) { ShowToolError("Export pages", ex); }
+'@
+          $new = @'
+            var d = new OpenFolderDialog { Title = "Choose a folder for page images" };
+            if (d.ShowDialog(this) != true) return;
+            try { var files = PdfExportService.ExportAllPagesPng(_active.Document, d.FolderName); StatusText.Text = $"Exported {files.Count} PNG page(s)"; } catch (Exception ex) { ShowToolError("Export pages", ex); }
+'@
+          if (-not $mainText.Contains($old.TrimStart("`r","`n"))) {
+            $oldCrlf = $old.TrimStart("`r","`n").Replace("`n", "`r`n")
+            if (-not $mainText.Contains($oldCrlf)) { throw 'Expected WinForms folder picker block was not found' }
+            $mainText = $mainText.Replace($oldCrlf, $new.TrimStart("`r","`n").Replace("`n", "`r`n"))
+          } else {
+            $mainText = $mainText.Replace($old.TrimStart("`r","`n"), $new.TrimStart("`r","`n"))
+          }
+          [IO.File]::WriteAllText($main, $mainText)
+
+          if (Select-String -Path $project,$main -Pattern 'UseWindowsForms|System\.Windows\.Forms|FolderBrowserDialog' -Quiet) { throw 'WinForms dependency remained after patch' }
+          Write-Host 'Applied WPF-only folder picker fix.'
 
       - name: Setup .NET 8
         uses: actions/setup-dotnet@v4
