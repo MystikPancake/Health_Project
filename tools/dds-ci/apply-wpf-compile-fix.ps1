@@ -2,9 +2,11 @@ $ErrorActionPreference = 'Stop'
 
 $project = Join-Path $PSScriptRoot '..\..\dds\src\Dokkaebi.DocumentStudio.Native\Dokkaebi.DocumentStudio.Native.csproj'
 $main = Join-Path $PSScriptRoot '..\..\dds\src\Dokkaebi.DocumentStudio.Native\MainWindow.xaml.cs'
+$controls = Join-Path $PSScriptRoot '..\..\dds\src\Dokkaebi.DocumentStudio.Native\Themes\Controls.xaml'
 
-if (-not (Test-Path $project)) { throw "DDS project not found: $project" }
-if (-not (Test-Path $main)) { throw "DDS MainWindow source not found: $main" }
+foreach ($required in @($project,$main,$controls)) {
+  if (-not (Test-Path $required)) { throw "DDS source not found: $required" }
+}
 
 $projectText = [IO.File]::ReadAllText($project)
 $projectText = [Regex]::Replace($projectText, '(?m)^\s*<UseWindowsForms>true</UseWindowsForms>\s*\r?\n', '')
@@ -19,7 +21,11 @@ $mainText = $mainText.Replace('case "Open": OpenCommandExecuted(this, new Execut
 $mainText = $mainText.Replace('case "Print": PrintCommandExecuted(this, new ExecutedRoutedEventArgs(ApplicationCommands.Print, null)); break;', 'case "Print": ApplicationCommands.Print.Execute(null, this); break;')
 [IO.File]::WriteAllText($main, $mainText)
 
-$remaining = Select-String -Path $project,$main -Pattern 'UseWindowsForms|System\.Windows\.Forms|FolderBrowserDialog|new ExecutedRoutedEventArgs'
+$controlsText = [IO.File]::ReadAllText($controls)
+$controlsText = $controlsText.Replace('<Setter Property="CharacterSpacing" Value="60"/>', '')
+[IO.File]::WriteAllText($controls, $controlsText)
+
+$remaining = Select-String -Path $project,$main,$controls -Pattern 'UseWindowsForms|System\.Windows\.Forms|FolderBrowserDialog|new ExecutedRoutedEventArgs|CharacterSpacing'
 if ($remaining) { throw "Legacy compile dependency remained after WPF patch: $($remaining -join '; ')" }
 
 Write-Host 'Applied DDS WPF compile fixes.'
