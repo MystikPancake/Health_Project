@@ -50,7 +50,16 @@ jobs:
       - name: Setup .NET 8
         uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: '8.0.x'
+          dotnet-version: '8.0.423'
+
+      - name: Pin .NET SDK for DDS
+        shell: pwsh
+        working-directory: dds
+        run: |
+          '{"sdk":{"version":"8.0.423","rollForward":"disable"}}' | Set-Content global.json -Encoding utf8
+          $sdk = dotnet --version
+          if ($sdk -ne '8.0.423') { throw "Unexpected .NET SDK selected: $sdk" }
+          Write-Host "DDS SDK: $sdk"
 
       - name: Install PDFium x64
         shell: pwsh
@@ -69,9 +78,9 @@ jobs:
         shell: pwsh
         working-directory: dds
         run: |
-          dotnet restore src/Dokkaebi.DocumentStudio.Native/Dokkaebi.DocumentStudio.Native.csproj
+          dotnet restore src/Dokkaebi.DocumentStudio.Native/Dokkaebi.DocumentStudio.Native.csproj -r win-x64
           dotnet restore src/Dokkaebi.DocumentStudio.Native.Tests/Dokkaebi.DocumentStudio.Native.Tests.csproj
-          dotnet restore src/Dokkaebi.DocumentStudio.OfficeWorker/Dokkaebi.DocumentStudio.OfficeWorker.csproj
+          dotnet restore src/Dokkaebi.DocumentStudio.OfficeWorker/Dokkaebi.DocumentStudio.OfficeWorker.csproj -r win-x64
 
       - name: Build WPF app
         shell: pwsh
@@ -86,12 +95,12 @@ jobs:
       - name: Publish WPF app
         shell: pwsh
         working-directory: dds
-        run: dotnet publish src/Dokkaebi.DocumentStudio.Native/Dokkaebi.DocumentStudio.Native.csproj -c Release -r win-x64 --self-contained true -o artifacts/app
+        run: dotnet publish src/Dokkaebi.DocumentStudio.Native/Dokkaebi.DocumentStudio.Native.csproj -c Release -r win-x64 --self-contained true --no-restore -o artifacts/app
 
       - name: Publish Office worker
         shell: pwsh
         working-directory: dds
-        run: dotnet publish src/Dokkaebi.DocumentStudio.OfficeWorker/Dokkaebi.DocumentStudio.OfficeWorker.csproj -c Release -r win-x64 --self-contained true -o artifacts/worker
+        run: dotnet publish src/Dokkaebi.DocumentStudio.OfficeWorker/Dokkaebi.DocumentStudio.OfficeWorker.csproj -c Release -r win-x64 --self-contained true --no-restore -o artifacts/worker
 
       - name: Verify native publish
         shell: pwsh
